@@ -21,10 +21,10 @@ struct Answer { // структура ответа клиенту
     bool hasDolg; // есть ли задолженность
     int stipendia_size; //размер стипендии
     char message[70]; //сообщение
-} C;
+} C;// будет формировать ответ перед отправкой клиенту
 
 // Исправляем тип переменной для устранения предупреждения
-streamoff size_pred;  // Вместо long используем streamoff
+streamoff size_pred;  // Вместо long используем streamoff<-подходит для больших значений
 
 int main()
 {
@@ -35,15 +35,16 @@ int main()
     SetConsoleOutputCP(1251);  // для русского текста
     SetConsoleCP(1251);
 
-    const char* nameR = "E:/comp/REQUEST1.bin";   // файл запросов клиентов
-    const char* nameA = "E:/comp/ANSWER1.bin";    // файл ответов сервера
+    const char* nameR = "Z:/comp/REQUEST1.bin";   // файл запросов клиентов
+    const char* nameA = "Z:/comp/ANSWER1.bin";    // файл ответов сервера
 
     cout << ".... Деканат сервер работает ...." << endl;
 
     // *** Начальные установки - определяем текущий размер файла запросов
     fR.open(nameR, ios::binary);            // открытие файла REQUEST
     fR.seekg(0, ios::end);                   // переход в конец файла
-    size_pred = fR.tellg();                  // стартовая позиция сервера в файле REQUEST
+    size_pred = fR.tellg();                  // стартовая позиция сервера в файле REQUEST, 
+    //tellg возвращает текущую позицию указателя чтения в байтах от начала файла 
     fR.close();                               // закрытие файла
 
     // *** Начало работы сервера (бесконечный цикл) ***
@@ -91,7 +92,7 @@ int main()
         if (hasDolg) {
             // Есть задолженности
             C.stipendia_size = 0;
-            // Используем strcpy - теперь работает благодаря #define
+            // Используем strcpy - работает благодаря #define
             strcpy(C.message, "Есть задолженности. Стипендия не назначается.");
             cout << "Результат: Есть задолженности" << endl;
         }
@@ -115,8 +116,8 @@ int main()
         }
 
         // *** Передача ответа клиенту ***
-        fA.open(nameA, ios::binary | ios::app);
-        fA.write((char*)&C, sizeof(Answer));
+        fA.open(nameA, ios::binary | ios::app);//запись будет производиьс в конец файла
+        fA.write((char*)&C, sizeof(Answer));//запись структуры ответа в файл
         fA.close();
 
     } // while
@@ -124,7 +125,6 @@ int main()
     return 0;
 }
 
-клиент 
 //ПРОГРАММА КЛИЕНТ
 #define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
@@ -140,25 +140,23 @@ struct Student
     int grade2;    // оценка 2
     int grade3;    // оценка 3
     int grade4;    // оценка 4
-} A;
+} A;//контейнер куда вводят данные структуры с клавы перед отправкой серверу
 
 // структура для ответа от сервера
 struct Answer {
     bool hasDolg;         // есть ли задолженность
     int stipendia_size;   // размер стипендии
     char message[70];     // сообщение
-} D;
+} D;//контейнер где клиент читает ответ сервера 
 
 void main() {
     setlocale(LC_ALL, "rus");
 
-    const char* nameR = "E:/comp/REQUEST1.bin";
-    //Файл для запросов клиентов
-    const char* nameA = "E:/comp/ANSWER1.bin";
-    //Файл для ответов сервера
-    ofstream f_REQ;
-    ifstream f_ANS;
-    long pred_size;
+    const char* nameR = "Z:/comp/REQUEST1.bin";//Файл для запросов клиентов
+    const char* nameA = "Z:/comp/ANSWER1.bin"; //Файл для ответов сервера
+    ofstream f_REQ;//для записи
+    ifstream f_ANS;//для чтения
+    long pred_size;//переменная закладка
 
     while (true)
     {
@@ -180,19 +178,14 @@ void main() {
             << A.grade1 << " " << A.grade2 << " "
             << A.grade3 << " " << A.grade4 << endl;
 
-        f_REQ.open(nameR, ios::app | ios::binary);
-        //открытие файла REQUEST
-        f_REQ.write((char*)&A, sizeof(Student));
-        //запись запроса в файл REQUEST
-        f_REQ.close();
+        f_REQ.open(nameR, ios::app | ios::binary);//открытие файла REQUEST все автоматически добавится в конец файла
+        f_REQ.write((char*)&A, sizeof(Student));//запись запроса в файл REQUEST данные из А копируются в файл
+        f_REQ.close();//закрываем фйл чтобы сервер смог открыть и прочитать
         cout << "Запрос отправлен, жду ответ..." << endl;
 
-        // поступил ответ от сервера?
-        f_ANS.open(nameA, ios::binary);
-        //открытие файла ANSWER
-        f_ANS.seekg(0, ios::end);
-        //переход в конец файла ANSWER
-        pred_size = f_ANS.tellg();
+        // поступил ответ от сервера?  //открытие файла ANSWER
+        f_ANS.seekg(0, ios::end);  //переход в конец файла ANSWER
+        pred_size = f_ANS.tellg(); // смотрит размер и запоминает его
         f_ANS.close();
 
         // ждем пока размер файла не увеличится (появится новый ответ)
@@ -202,13 +195,12 @@ void main() {
             f_ANS.seekg(0, ios::end);
             long current_size = f_ANS.tellg();
             f_ANS.close();
-            if (current_size > pred_size) break;
+            if (current_size > pred_size) break;//как только размер больше фай закрывается
         }
 
         // получение ответа от сервера
         f_ANS.open(nameA, ios::binary);
-        f_ANS.seekg(pred_size, ios::beg);
-        // на начало нового ответа
+        f_ANS.seekg(pred_size, ios::beg);// перемещаем указатель на начало нового ответа
         f_ANS.read((char*)&D, sizeof(Answer)); // считывание ответа
         f_ANS.close();
 
