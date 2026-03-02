@@ -1,3 +1,211 @@
+//СЕРВЕР
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <fstream>
+#include <windows.h>
+#include <cstring>
+using namespace std;
+
+// Структура данных запроса от клиента
+struct Student
+{
+    char name[25];   // имя
+    int grade1;    //оценка за первый экзамен и тд
+    int grade2;
+    int grade3;
+    int grade4;
+} B; // данные от клиента
+
+// структура ответа клиенту - теперь ТОЛЬКО оценки!
+struct Answer { 
+    char name[25];    // имя студента
+    int grade1;       
+    int grade2;
+    int grade3;
+    int grade4;
+} C; // ответ сервера (просто копия запроса)
+
+streamoff size_pred;  // позиция в файле
+
+int main()
+{
+    ifstream fR;     // чтение из REQUEST
+    ofstream fA;     // запись в ANSWER
+
+    setlocale(LC_ALL, "rus");
+    SetConsoleOutputCP(1251);
+    SetConsoleCP(1251);
+
+    const char* nameR = "Z:/comp/REQUEST1.bin";   // файл запросов
+    const char* nameA = "Z:/comp/ANSWER1.bin";    // файл ответов
+
+    cout << ".... Деканат сервер работает ...." << endl;
+
+    // начальные установки
+    fR.open(nameR, ios::binary);
+    fR.seekg(0, ios::end);
+    size_pred = fR.tellg();  // запоминаем размер файла
+    fR.close();
+
+    // бесконечный цикл работы сервера
+    while (true)
+    {
+        // проверяем новые запросы
+        fR.open(nameR, ios::binary);
+        fR.seekg(0, ios::end);
+
+        // ждем появления нового запроса
+        while (size_pred >= fR.tellg())
+        {
+            Sleep(100);
+            fR.seekg(0, ios::end);
+        }
+
+        // читаем новый запрос
+        fR.seekg(size_pred, ios::beg);
+        fR.read((char*)&B, sizeof(Student));
+
+        size_pred = fR.tellg();  // обновляем позицию
+        fR.close();
+
+        // просто копируем данные в ответ (НИКАКИХ РАСЧЕТОВ!)
+        strcpy(C.name, B.name);
+        C.grade1 = B.grade1;
+        C.grade2 = B.grade2;
+        C.grade3 = B.grade3;
+        C.grade4 = B.grade4;
+
+        // отправляем ответ
+        fA.open(nameA, ios::binary | ios::app);
+        fA.write((char*)&C, sizeof(Answer));
+        fA.close();
+
+        // сервер только информирует, что обработал запрос
+        cout << "Обработан запрос: " << B.name << endl;
+
+    } // while
+
+    return 0;
+}// КЛИЕНТ
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <fstream>
+#include <windows.h>
+using namespace std;
+
+// структура запроса
+struct Student
+{
+    char name[25];
+    int grade1;
+    int grade2;
+    int grade3;
+    int grade4;
+} A;
+
+// структура ответа (такая же, как на сервере)
+struct Answer {
+    char name[25];
+    int grade1;
+    int grade2;
+    int grade3;
+    int grade4;
+} D;
+
+void main() {
+    setlocale(LC_ALL, "rus");
+
+    const char* nameR = "Z:/comp/REQUEST1.bin"; // файл запросов
+    const char* nameA = "Z:/comp/ANSWER1.bin";  // файл ответов
+    ofstream f_REQ;
+    ifstream f_ANS;
+    long pred_size;
+
+    while (true)
+    {
+        // ввод данных
+        cout << "\n========== НОВЫЙ СТУДЕНТ ==========" << endl;
+        cout << "Введите фамилию: ";
+        cin >> A.name;
+        cout << "Введите 4 оценки через пробел: ";
+        cin >> A.grade1 >> A.grade2 >> A.grade3 >> A.grade4;
+
+        // отправка запроса
+        f_REQ.open(nameR, ios::app | ios::binary);
+        f_REQ.write((char*)&A, sizeof(Student));
+        f_REQ.close();
+        cout << "Запрос отправлен, жду ответ..." << endl;
+
+        // запоминаем текущий размер файла ответов
+        f_ANS.open(nameA, ios::binary);
+        f_ANS.seekg(0, ios::end);
+        pred_size = f_ANS.tellg();
+        f_ANS.close();
+
+        // ждем ответ
+        while (true) {
+            Sleep(100);
+            f_ANS.open(nameA, ios::binary);
+            f_ANS.seekg(0, ios::end);
+            long current_size = f_ANS.tellg();
+            f_ANS.close();
+            if (current_size > pred_size) break;
+        }
+
+        // читаем ответ
+        f_ANS.open(nameA, ios::binary);
+        f_ANS.seekg(pred_size, ios::beg);
+        f_ANS.read((char*)&D, sizeof(Answer));
+        f_ANS.close();
+
+        // *** КЛИЕНТ САМ ВСЕ СЧИТАЕТ ***
+        
+        // 1. Считаем средний балл
+        double average = (D.grade1 + D.grade2 + D.grade3 + D.grade4) / 4.0;
+        
+        // 2. Считаем количество задолженностей (оценки 2 и ниже)
+        int dolgCount = 0;
+        if (D.grade1 <= 2) dolgCount++;
+        if (D.grade2 <= 2) dolgCount++;
+        if (D.grade3 <= 2) dolgCount++;
+        if (D.grade4 <= 2) dolgCount++;
+        
+        // 3. Определяем стипендию
+        int stipendia = 0;
+        if (dolgCount == 0) { // нет долгов
+            if (average >= 4.5) stipendia = 5555;
+            else if (average >= 4.0) stipendia = 2250;
+        }
+
+        // 4. ВЫВОД РЕЗУЛЬТАТА (теперь на клиенте!)
+        cout << "\n********** РЕЗУЛЬТАТ **********" << endl;
+        cout << "Студент: " << D.name << endl;
+        cout << "Оценки: " << D.grade1 << " " << D.grade2 << " "
+             << D.grade3 << " " << D.grade4 << endl;
+        cout << "Средний балл: " << average << endl;
+        cout << "Количество задолженностей: " << dolgCount << endl;
+        
+        if (dolgCount > 0) {
+            cout << "СТАТУС: Есть задолженности" << endl;
+            cout << "Стипендия: 0 руб." << endl;
+        }
+        else {
+            if (stipendia == 5555) 
+                cout << "СТАТУС: Повышенная стипендия" << endl;
+            else if (stipendia == 2250) 
+                cout << "СТАТУС: Обычная стипендия" << endl;
+            else 
+                cout << "СТАТУС: Нет стипендии (ср.балл < 4.0)" << endl;
+            
+            cout << "Стипендия: " << stipendia << " руб." << endl;
+        }
+        cout << "*******************************\n" << endl;
+
+    } //while
+}
+
+
+
 сервер
 //СЕРВЕР
 #define _CRT_SECURE_NO_WARNINGS  // ЭТО РЕШАЕТ ПРОБЛЕМУ С strcpy
