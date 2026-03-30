@@ -1,3 +1,104 @@
+// SERVER TCP с игрой Камень-Ножницы-Бумага
+#include <iostream>  
+#include <winsock2.h> 
+#include <windows.h> 
+#include <string>
+#include <cstdlib>
+#include <ctime>
+#pragma comment (lib, "Ws2_32.lib")  
+using namespace std;
+#define SRV_PORT 1234  
+#define BUF_SIZE 64  
+const string QUEST = "Who are you?\n";
+
+int main() {
+    srand(time(0)); // для случайного выбора сервера
+    
+    char buff[1024];
+    if (WSAStartup(0x0202, (WSADATA*)&buff[0]))
+    {
+        cout << "Error WSAStartup \n" << WSAGetLastError();
+        return -1;
+    }
+    
+    SOCKET s, s_new;
+    int from_len;
+    char buf[BUF_SIZE] = { 0 };
+    sockaddr_in sin, from_sin;
+    
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = 0;
+    sin.sin_port = htons(SRV_PORT);
+    bind(s, (sockaddr*)&sin, sizeof(sin));
+    
+    string msg, msg1;
+    listen(s, 3);
+    
+    cout << "=== ИГРА КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===" << endl;
+    
+    while (1) {
+        from_len = sizeof(from_sin);
+        s_new = accept(s, (sockaddr*)&from_sin, &from_len);
+        cout << "new connected client! " << endl;
+        
+        msg = "=== ИГРА КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===\n";
+        msg += "Введите: 1-камень, 2-ножницы, 3-бумага или Bye для выхода\n";
+        msg += "Ваш выбор: ";
+        
+        while (1) {
+            send(s_new, (char*)&msg[0], msg.size(), 0);
+            from_len = recv(s_new, (char*)buf, BUF_SIZE, 0);
+            buf[from_len] = 0;
+            msg1 = (string)buf;
+            cout << "Клиент выбрал: " << msg1 << endl;
+            
+            if (msg1 == "Bye") break;
+            
+            // Сервер случайно выбирает: 1-камень, 2-ножницы, 3-бумага
+            int server_choice = rand() % 3 + 1;
+            string server_str;
+            if (server_choice == 1) server_str = "камень";
+            else if (server_choice == 2) server_str = "ножницы";
+            else server_str = "бумага";
+            
+            // Определяем победителя
+            string result;
+            if (msg1 == "1") { // клиент - камень
+                if (server_choice == 1) result = "Ничья! Сервер тоже выбрал камень";
+                else if (server_choice == 2) result = "Ты победил! Камень бьет ножницы";
+                else result = "Ты проиграл! Бумага накрывает камень";
+            }
+            else if (msg1 == "2") { // клиент - ножницы
+                if (server_choice == 2) result = "Ничья! Сервер тоже выбрал ножницы";
+                else if (server_choice == 3) result = "Ты победил! Ножницы режут бумагу";
+                else result = "Ты проиграл! Камень ломает ножницы";
+            }
+            else if (msg1 == "3") { // клиент - бумага
+                if (server_choice == 3) result = "Ничья! Сервер тоже выбрал бумагу";
+                else if (server_choice == 1) result = "Ты победил! Бумага накрывает камень";
+                else result = "Ты проиграл! Ножницы режут бумагу";
+            }
+            else {
+                result = "Неверный ввод! Введите 1, 2 или 3";
+            }
+            
+            msg = "Сервер выбрал: " + server_str + "\n";
+            msg += "Результат: " + result + "\n";
+            msg += "----------------------------------------\n";
+            msg += "Введите: 1-камень, 2-ножницы, 3-бумага или Bye для выхода\n";
+            msg += "Ваш выбор: ";
+        }
+        
+        cout << "client is lost";
+        closesocket(s_new);
+    }
+    
+    return 0;
+}
+
+
+
 // SERVER TCP 
 
 #include <iostream>  
