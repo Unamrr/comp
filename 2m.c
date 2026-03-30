@@ -1,4 +1,86 @@
+// SERVER TCP - Камень Ножницы Бумага (максимально просто)
+#include <iostream>  
+#include <winsock2.h> 
+#include <windows.h> 
+#include <string>
+#include <cstdlib>
+#include <ctime>
+#pragma comment (lib, "Ws2_32.lib")  
+using namespace std;
+#define SRV_PORT 1234  
+#define BUF_SIZE 64  
 
+int main() {
+    srand(time(0));
+    
+    char buff[1024];
+    if (WSAStartup(0x0202, (WSADATA*)&buff[0]))
+    {
+        cout << "Error WSAStartup \n" << WSAGetLastError();
+        return -1;
+    }
+    
+    SOCKET s, s_new;
+    int from_len;
+    char buf[BUF_SIZE] = { 0 };
+    sockaddr_in sin, from_sin;
+    
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = 0;
+    sin.sin_port = htons(SRV_PORT);
+    bind(s, (sockaddr*)&sin, sizeof(sin));
+    
+    string msg, msg1;
+    listen(s, 3);
+    
+    while (1) {
+        from_len = sizeof(from_sin);
+        s_new = accept(s, (sockaddr*)&from_sin, &from_len);
+        cout << "new connected client! " << endl;
+        
+        msg = "1-камень 2-ножницы 3-бумага Bye-выход: ";
+        
+        while (1) {
+            send(s_new, (char*)&msg[0], msg.size(), 0);
+            from_len = recv(s_new, (char*)buf, BUF_SIZE, 0);
+            buf[from_len] = 0;
+            msg1 = (string)buf;
+            cout << msg1 << endl;
+            
+            if (msg1 == "Bye") break;
+            
+            int server = rand() % 3 + 1;
+            string res;
+            
+            if (msg1 == "1") {
+                if (server == 1) res = "Ничья (камень)";
+                else if (server == 2) res = "Ты выиграл! (камень бьет ножницы)";
+                else res = "Ты проиграл! (бумага накрыла камень)";
+            }
+            else if (msg1 == "2") {
+                if (server == 2) res = "Ничья (ножницы)";
+                else if (server == 3) res = "Ты выиграл! (ножницы режут бумагу)";
+                else res = "Ты проиграл! (камень сломал ножницы)";
+            }
+            else if (msg1 == "3") {
+                if (server == 3) res = "Ничья (бумага)";
+                else if (server == 1) res = "Ты выиграл! (бумага накрыла камень)";
+                else res = "Ты проиграл! (ножницы режут бумагу)";
+            }
+            else {
+                res = "Введи 1,2 или 3";
+            }
+            
+            msg = res + "\n1-камень 2-ножницы 3-бумага Bye-выход: ";
+        }
+        
+        cout << "client is lost";
+        closesocket(s_new);
+    }
+    
+    return 0;
+}
 // SERVER TCP с игрой Камень-Ножницы-Бумага (работает с вашим клиентом)
 #include <iostream>  
 #include <winsock2.h> 
