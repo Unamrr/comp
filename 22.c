@@ -1,235 +1,214 @@
-// UDP-эхо сервер
-#include "stdafx.h"  // предкомпилированный заголовок Visual Studio (можно игнорировать)
+//klient
+#define _WINSOCK_DEPRECATED_NO_WARNINGS   // отключаем предупреждения об устаревших функциях
 
-#define _WINSOCK_DEPRECATED_NO_WARNINGS  // отключаем предупреждения об устаревших функциях (gethostbyaddr и др.)
+#include <winsock2.h>         // работа с сокетами
+#include <string>             
+#include <windows.h>          // Windows API
+#include <iostream>           
 
-#include <winsock2.h>  // заголовочный файл Winsock - все функции для работы с сокетами в Windows
-#include <windows.h>   // основные функции Windows (нужен для Winsock)
-#include <string>      // для работы со строками (string, getline)
-#include <iostream>    // для ввода-вывода (cout, cin)
+#pragma comment(lib, "ws2_32.lib")   // подключаем библиотеку Winsock
+#pragma warning(disable: 4996)       // отключаем предупреждения
 
-#pragma comment(lib, "Ws2_32.lib")  // указываем компоновщику, что нужно подключить библиотеку Winsock
-#pragma warning(disable: 4996)      // отключаем предупреждение 4996 об использовании "опасных" функций
+using namespace std;          
 
-using namespace std;  // чтобы не писать std:: перед cout, string и т.д.
-
-#define PORT 666       // порт, на котором будет работать сервер (число больше 1024, чтобы не конфликтовать с системными)
-#define sHELLO "Hello, STUDENT\n"  // приветственное сообщение (в коде не используется, но оставлено как пример)
+#define PORT 666              // порт сервера (должен совпадать с сервером)
+#define SERVERADDR "127.0.0.1" // IP-адрес сервера (127.0.0.1 = localhost)
 
 int main() {
-    char buff[1024];  // буфер для приема и отправки данных (1024 байта - типичный размер для UDP)
-    
-    cout << "UDP DEMO ECHO-SERVER\n";  // выводим название программы - режим ожидания сообщений
-    
-    // ==================== ШАГ 1: ИНИЦИАЛИЗАЦИЯ WINSOCK ====================
-    // WSAStartup - обязательная инициализация библиотеки сокетов в Windows
-    // параметр 0x202 = версия 2.2 (0x02=младший байт, 0x02=старший байт)
-    // второй параметр - указатель на структуру WSADATA, которая получит информацию о версии
-    if (WSAStartup(0x202, (WSADATA*)&buff[0]))  // используем buff как память под WSADATA (не самый красивый способ)
-    {
-        cout << "WSAStartup error: " << WSAGetLastError();  // если не 0 - ошибка, выводим код ошибки
-        return -1;   // завершаем программу с кодом ошибки
+
+    char buff[10 * 1014];     // буфер для данных (10140 байт)
+    cout << "UDP Demo Client\nType quit to quit \n";
+
+    //  ШАГ 1 - ИНИЦИАЛИЗАЦИЯ WINSOCK 
+    if (WSAStartup(0x202, (WSADATA*)&buff)) {   // загружаем Winsock
+        cout << "WSASTARTUP ERROR: " << WSAGetLastError() << "\n";
+        return -1;            // ошибка - выходим
     }
-    
-    // ==================== ШАГ 2: СОЗДАНИЕ СОКЕТА ====================
-    SOCKET Lsock;  // дескриптор (хендл) сокета - число, идентифицирующее наш сокет
-    
-    // socket() - создает сокет
-    // AF_INET - семейство протоколов IPv4
-    // SOCK_DGRAM - тип сокета: дейтаграммный (UDP, в отличие от SOCK_STREAM для TCP)
-    // 0 - автоматический выбор протокола (UDP для SOCK_DGRAM)
-    Lsock = socket(AF_INET, SOCK_DGRAM, 0);
-    
-    if (Lsock == INVALID_SOCKET) {  // INVALID_SOCKET = -1, значит сокет не создался
-        cout << "SOCKET() ERROR: " << WSAGetLastError();  // выводим код ошибки
-        WSACleanup();  // освобождаем ресурсы Winsock
-        return -1;     // завершаем программу
+
+    //  ШАГ 2 - СОЗДАНИЕ СОКЕТА 
+    // Создаём UDP сокет (SOCK_DGRAM)
+    SOCKET my_sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (my_sock == INVALID_SOCKET) {   // проверка на ошибку
+        cout << "SOCKET() ERROR: " << WSAGetLastError() << "\n";
+        WSACleanup();        // выгружаем Winsock
+        return -1;           // выходим
     }
-    
-    // ==================== ШАГ 3: ПРИВЯЗКА СОКЕТА К ЛОКАЛЬНОМУ АДРЕСУ ====================
-    sockaddr_in Laddr;  // структура для хранения адреса сервера (IP + порт)
-    
-    Laddr.sin_family = AF_INET;              // семейство адресов - IPv4
-    Laddr.sin_addr.s_addr = INADDR_ANY;      // INADDR_ANY = 0.0.0.0 - слушаем на всех сетевых интерфейсах компьютера
-    Laddr.sin_port = htons(PORT);            // порт 666, htons() переводит число в сетевой порядок байт (big-endian)
-    
-    // bind() - привязывает сокет к конкретному адресу и порту
-    // если не привязать, ОС сама выберет случайный порт, но клиент не сможет найти сервер
-    if (bind(Lsock, (sockaddr*)&Laddr, sizeof(Laddr)))  // возвращает 0 при успехе
-    {
-        cout << "BIND ERROR:" << WSAGetLastError();  // ошибка привязки (например, порт уже занят)
-        closesocket(Lsock);  // закрываем сокет
-        WSACleanup();        // освобождаем Winsock
-        return -1;           // завершаем программу
+
+    //  ШАГ 3 - НАСТРОЙКА АДРЕСА СЕРВЕРА 
+    HOSTENT* hst;            // структура для имени хоста
+    sockaddr_in Daddr;       // структура адреса сервера 
+    Daddr.sin_family = AF_INET;        // IPv4
+    Daddr.sin_port = htons(PORT);      // порт сервера (в сетевой порядок байт)
+
+    // Определяем IP-адрес сервера (из имени или из строки)
+    // inet_addr() - преобразует строку с IP (например "127.0.0.1") в число
+    if (inet_addr(SERVERADDR)) {                     // если SERVERADDR - это IP-адрес
+        Daddr.sin_addr.s_addr = inet_addr(SERVERADDR);  // используем его
     }
-    
-    // ==================== ШАГ 4: ОСНОВНОЙ ЦИКЛ ОБРАБОТКИ ПАКЕТОВ ====================
-    while (1) {  // бесконечный цикл - сервер работает постоянно, пока не закроют процесс
-        sockaddr_in Caddr;      // структура для хранения адреса клиента, который прислал сообщение
-        int Caddr_size = sizeof(Caddr);  // размер структуры, recvfrom заполнит ее данными клиента
-        
-        // recvfrom() - принимает UDP датаграмму
-        // параметры:
-        // Lsock - наш сокет
-        // &buff[0] - буфер, куда будут записаны полученные данные
-        // sizeof(buff)-1 - оставляем место для нуль-терминатора (1 байт)
-        // 0 - флаги (не используем)
-        // (sockaddr*)&Caddr - структура, куда запишется адрес отправителя
-        // &Caddr_size - указатель на размер структуры (может измениться)
-        int bsize = recvfrom(Lsock, &buff[0], sizeof(buff) - 1, 0,
-                             (sockaddr*)&Caddr, &Caddr_size);
-        
-        if (bsize == SOCKET_ERROR)  // SOCKET_ERROR = -1, значит ошибка приема
-            cout << "RECVFROM() ERROR:" << WSAGetLastError();  // выводим код ошибки
-        
-        // ==================== ОПРЕДЕЛЕНИЕ ИМЕНИ ХОСТА КЛИЕНТА ====================
-        HOSTENT* hst;  // структура, содержащая информацию о хосте (имя, IP и т.д.)
-        
-        // gethostbyaddr() - пытается получить имя хоста по его IP-адресу (устаревшая функция)
-        // (char*)&Caddr.sin_addr - указатель на IP-адрес клиента (4 байта)
-        // 4 - длина IP-адреса в байтах
-        // AF_INET - тип адреса (IPv4)
-        hst = gethostbyaddr((char*)&Caddr.sin_addr, 4, AF_INET);
-        
-        // выводим информацию о полученном сообщении
-        cout << "NEW DATAGRAM!\n";  // сервер получил новый пакет
-        
-        // если hst не NULL, берем hst->h_name (имя компьютера), иначе "Unknown host"
-        // !!! ВНИМАНИЕ: в коде ошибка - написано "/n" вместо "\n" (перевод строки)
-        cout << ((hst) ? hst->h_name : "Unknown host") << "/n";
-        
-        // inet_ntoa() - преобразует IP из числового формата в строку типа "127.0.0.1"
-        cout << inet_ntoa(Caddr.sin_addr) << "/n";
-        
-        // ntohs() - переводит порт из сетевого порядка байт в порядок хоста (обратно htons)
-        cout << ntohs(Caddr.sin_port) << '\n';
-        
-        buff[bsize] = '\0';  // добавляем завершающий нуль в конец строки, чтобы cout знал, где остановиться
-        cout << "C=>S:" << buff << '\n';  // выводим полученное сообщение на экран сервера
-        
-        // ==================== ОТПРАВКА ЭХО-ОТВЕТА КЛИЕНТУ ====================
-        // sendto() - отправляет UDP датаграмму
-        // параметры:
-        // Lsock - наш сокет
-        // &buff[0] - буфер с данными для отправки (то же самое, что получили)
-        // bsize - размер данных (сколько байт отправлять)
+    else   // иначе пробуем получить IP по имени узла (например "localhost")
+        if (hst = gethostbyname(SERVERADDR)) {       // получаем IP по имени
+            Daddr.sin_addr.s_addr = ((unsigned long**)hst->h_addr_list)[0][0];  // берём первый IP
+        }
+        else {   // если ни то, ни другое не подошло
+            cout << "Unknown Host: " << WSAGetLastError() << "\n";
+            closesocket(my_sock);   // закрываем сокет
+            WSACleanup();           // выгружаем Winsock
+            return -1;              // выходим
+        }
+
+    //  ШАГ 4 - ОБМЕН СООБЩЕНИЯМИ С СЕРВЕРОМ 
+    while (1) {                
+
+        // Читаем сообщение с клавиатуры
+        cout << "S<=C:";       // приглашение для ввода (S<=C = клиент отправляет)
+        string SS;             // строка для введённого сообщения
+        getline(cin, SS);      // читаем целую строку из консоли
+
+        if (SS == "quit") break;   // если ввели "quit" - выходим из цикла
+
+        // Отправляем датаграмму на сервер
+        // sendto() - отправка UDP пакета
+        // (char*)&SS[0] - указатель на данные (строку)
+        // SS.size() - размер отправляемых данных
         // 0 - флаги
-        // (sockaddr*)&Caddr - адрес получателя (клиента, от которого пришло сообщение)
-        // sizeof(Caddr) - размер структуры адреса
-        sendto(Lsock, &buff[0], bsize, 0, (sockaddr*)&Caddr, sizeof(Caddr));
-        
-        // цикл повторяется - сервер ждет следующее сообщение от любого клиента
+        // (sockaddr *)&Daddr - адрес получателя (сервера)
+        // sizeof(Daddr) - размер структуры адреса
+        sendto(my_sock, (char*)&SS[0], SS.size(), 0,
+            (sockaddr*)&Daddr, sizeof(Daddr));
+
+        // Принимаем ответ от сервера
+        sockaddr_in SRaddr;    // структура для адреса отправителя (сервера)
+        int SRaddr_size = sizeof(SRaddr);   // размер структуры
+
+        // recvfrom() - принимаем UDP пакет
+        int n = recvfrom(my_sock, buff, sizeof(buff), 0,
+            (sockaddr*)&SRaddr, &SRaddr_size);
+
+        if (n == SOCKET_ERROR) {   // если ошибка
+            cout << "RECVFROM() ERROR:" << WSAGetLastError() << "\n";
+            closesocket(my_sock);  // закрываем сокет
+            WSACleanup();          // выгружаем Winsock
+            return -1;             // выходим
+        }
+
+        buff[n] = '\0';        // добавляем завершающий ноль
+
+        // Выводим полученный ответ на экран
+        cout << "S=>C:" << buff << "\n";   // S=>C = сервер -> клиент
     }
-    return 0;  // сюда не дойдем никогда, потому что while(1) бесконечный
+
+    //  ШАГ 5 - ЗАВЕРШЕНИЕ РАБОТЫ 
+    closesocket(my_sock);      // закрываем сокет
+    WSACleanup();              // выгружаем библиотеку Winsock
+    return 0;                  // успешное завершение
 }
 
 
+#define _WINSOCK_DEPRECATED_NO_WARNINGS   // отключаем предупреждения об устаревших функциях Winsock
 
-// пример UDP-клиента
-#define _WINSOCK_DEPRECATED_NO_WARNINGS  // отключаем предупреждения об устаревших функциях
+#include <winsock2.h>         // заголовочный файл Winsock2 (работа с сокетами в Windows)
+#include <windows.h>          // Windows API (нужен для Winsock)
+#include <string>             
+#include <iostream>          
 
-#include <winsock2.h>  // заголовочный файл Winsock
-#include <string>      // для работы со строками
-#include <windows.h>   // основные функции Windows
-#include <iostream>    // для ввода-вывода
+#pragma comment(lib, "Ws2_32.lib")   // указываем линкеру подключить библиотеку Winsock
+#pragma warning(disable: 4996)       // отключаем предупреждение 4996 (опасные функции)
 
-#pragma comment(lib, "ws2_32.lib")  // подключаем библиотеку сокетов
-#pragma warning(disable: 4996)      // отключаем предупреждение 4996
+using namespace std;          
 
-using namespace std;  // чтобы не писать std:: каждый раз
+#define PORT 666              // порт, на котором будет работать сервер
+#define sHELLO "Hello, STUDENT\n"   
 
-#define PORT 666                // порт сервера (должен совпадать с сервером)
-#define SERVERADDR "127.0.0.1"  // IP-адрес сервера (127.0.0.1 = localhost = этот же компьютер)
+int main() {                  
 
-int main()
-{
-    char buff[10 * 1014];  // буфер для приема данных (10KB, но по факту используется меньше)
-    
-    cout << "UDP Demo Client\nType quit to quit \n";  // приветствие и инструкция
-    
-    // ==================== ШАГ 1: ИНИЦИАЛИЗАЦИЯ WINSOCK ====================
-    // WSAStartup - обязательная инициализация библиотеки сокетов
-    if (WSAStartup(0x202, (WSADATA*)&buff))  // снова используем buff для WSADATA
-    {
-        cout << "WSASTARTUP ERROR: " << WSAGetLastError() << "\n";
-        return -1;  // не смогли инициализировать Winsock - выходим
+    char buff[1024];          // буфер для хранения данных (1024 байта)
+    cout << "UDP DEMO ECHO-SERVER\n";   // выводим название программы
+
+    //  ШАГ 1 - ИНИЦИАЛИЗАЦИЯ WINSOCK 
+    // WSAStartup - загружает библиотеку Winsock
+    // 0x202 - версия Winsock 2.2
+    // (WSADATA *)&buff[0] - структура для получения информации о версии
+    if (WSAStartup(0x202, (WSADATA*)&buff[0])) {  // если не 0 - ошибка
+        cout << "WSAStartup error: " << WSAGetLastError();  // выводим код ошибки
+        return -1;           // завершаем программу с кодом ошибки
     }
-    
-    // ==================== ШАГ 2: СОЗДАНИЕ СОКЕТА ====================
-    // socket() - создает сокет (AF_INET=IPv4, SOCK_DGRAM=UDP, 0=авто-протокол)
-    SOCKET my_sock = socket(AF_INET, SOCK_DGRAM, 0);
-    
-    if (my_sock == INVALID_SOCKET) {  // проверка на ошибку создания
-        cout << "SOCKET() ERROR: " << WSAGetLastError() << "\n";
-        WSACleanup();  // освобождаем Winsock
-        return -1;     // выходим с ошибкой
+
+    //  ШАГ 2 - СОЗДАНИЕ СОКЕТА 
+    SOCKET Lsock;             // дескриптор сокета (аналог файлового дескриптора)
+    // socket() - создает сокет
+    // AF_INET - семейство протоколов IPv4
+    // SOCK_DGRAM - тип сокета: датаграммный (UDP)
+    // 0 - протокол (0 = автоматически выбирает UDP для SOCK_DGRAM)
+    Lsock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (Lsock == INVALID_SOCKET) {     // если сокет не создан (ошибка)
+        cout << "SOCKET() ERROR: " << WSAGetLastError();  // выводим ошибку
+        WSACleanup();        // выгружаем библиотеку Winsock
+        return -1;           // завершаем программу
     }
-    
-    // ==================== ШАГ 3: НАСТРОЙКА АДРЕСА СЕРВЕРА ====================
-    HOSTENT* hst;      // структура для информации о хосте
-    sockaddr_in Daddr; // структура для хранения адреса сервера
-    
-    Daddr.sin_family = AF_INET;           // семейство адресов IPv4
-    Daddr.sin_port = htons(PORT);         // порт 666 в сетевом порядке байт
-    
-    // inet_addr() - преобразует строковый IP в числовой формат
-    // если строка НЕ является IP-адресом (например, "google.com"), возвращает INADDR_NONE
-    if (inet_addr(SERVERADDR))
-        // если SERVERADDR - это IP (например, "127.0.0.1"), просто преобразуем его
-        Daddr.sin_addr.s_addr = inet_addr(SERVERADDR);
-    else
-        // иначе считаем, что SERVERADDR - это доменное имя (например, "localhost")
-        // пытаемся разрешить имя в IP через DNS
-        if (hst = gethostbyname(SERVERADDR))
-            // hst->h_addr_list[0][0] - первый IP-адрес из списка
-            // приведение типов: берем 4 байта IP и преобразуем в unsigned long
-            Daddr.sin_addr.s_addr = ((unsigned long**)hst->h_addr_list)[0][0];
-        else {
-            cout << "Unknown Host: " << WSAGetLastError() << "\n";  // не удалось найти хост
-            closesocket(my_sock);  // закрываем сокет
-            WSACleanup();          // освобождаем Winsock
-            return -1;             // выходим с ошибкой
+
+    //  ШАГ 3 - СВЯЗЫВАНИЕ СОКЕТА С ЛОКАЛЬНЫМ АДРЕСОМ 
+    sockaddr_in Laddr;       // структура для хранения адреса сервера
+    Laddr.sin_family = AF_INET;        // семейство протоколов: IPv4
+    Laddr.sin_addr.s_addr = INADDR_ANY; // INADDR_ANY = 0 - принимать соединения с любых IP-адресов
+    Laddr.sin_port = htons(PORT);       // htons() - переводит порт из host byte order в network byte order
+
+    // bind() - привязывает сокет к указанному адресу и порту
+    // (sockaddr *)&Laddr - приводим к общему типу sockaddr
+    // sizeof(Laddr) - размер структуры
+    if (bind(Lsock, (sockaddr*)&Laddr, sizeof(Laddr))) {  // если не 0 - ошибка
+        cout << "BIND ERROR:" << WSAGetLastError();        // выводим ошибку
+        closesocket(Lsock);   // закрываем сокет
+        WSACleanup();         // выгружаем Winsock
+        return -1;            // завершаем программу
+    }
+
+    //  ШАГ 4 - ОБРАБОТКА ДАТАГРАММ ОТ КЛИЕНТОВ 
+    while (1) {               // бесконечный цикл (сервер работает постоянно)
+
+        sockaddr_in Caddr;    // структура для хранения адреса клиента
+        int Caddr_size = sizeof(Caddr);   // размер структуры (нужен для recvfrom)
+
+        // recvfrom() - принимает данные от клиента (UDP)
+        // &buff[0] - буфер для данных
+        // sizeof(buff)-1 - максимальный размер данных (оставляем место для '\0')
+        // 0 - флаги (0 = нет спец.режимов)
+        // (sockaddr *)&Caddr - адрес клиента будет записан сюда
+        // &Caddr_size - размер структуры (in/out параметр)
+        int bsize = recvfrom(Lsock, &buff[0], sizeof(buff) - 1, 0,
+            (sockaddr*)&Caddr, &Caddr_size);
+
+        if (bsize == SOCKET_ERROR) {     // если ошибка
+            cout << "RECVFROM() ERROR:" << WSAGetLastError();  // выводим код ошибки
         }
-    
-    // ==================== ШАГ 4: ОСНОВНОЙ ЦИКЛ ОБМЕНА С СОКЕТОМ ====================
-    while (1) {  // бесконечный цикл до команды "quit"
-        // читаем сообщение с клавиатуры
-        cout << "S<=C:";          // приглашение к вводу (S<=C = от клиента к серверу)
-        string SS;                // временная строка для ввода
-        getline(cin, SS);         // читаем целую строку (до нажатия Enter)
-        
-        if (SS == "quit") break;  // если ввели "quit", выходим из цикла (завершаем клиент)
-        
-        // ==================== ОТПРАВКА СООБЩЕНИЯ СЕРВЕРУ ====================
-        // sendto() - отправляет UDP датаграмму
-        // (char*)&SS[0] - указатель на первый символ строки (данные)
-        // SS.size() - размер строки в байтах
+
+        //  ОПРЕДЕЛЯЕМ IP-АДРЕС КЛИЕНТА 
+        HOSTENT* hst;         // структура для информации об узле (IP -> имя)
+        // gethostbyaddr() - получает имя хоста по IP-адресу
+        // (char *)&Caddr.sin_addr - указатель на IP адрес клиента
+        // 4 - длина IP-адреса (4 байта для IPv4)
+        // AF_INET - семейство протоколов
+        hst = gethostbyaddr((char*)&Caddr.sin_addr, 4, AF_INET);
+
+        // Выводим информацию о клиенте
+        cout << "NEW DATAGRAM!\n" <<
+            ((hst) ? hst->h_name : "Unknown host") << "/n" <<   // имя хоста или "Unknown host"
+            inet_ntoa(Caddr.sin_addr) << "/n" <<                 // IP-адрес в виде строки
+            ntohs(Caddr.sin_port) << '\n';                       // порт клиента (ntohs - обратно в host byte order)
+
+        buff[bsize] = '\0';    // добавляем завершающий ноль (чтобы работать как со строкой)
+        cout << "C=>S:" << buff << '\n';   // выводим полученное сообщение на экран
+
+        //  ОТПРАВЛЯЕМ ДАННЫЕ ОБРАТНО КЛИЕНТУ (ЭХО) 
+        // sendto() - отправляет данные клиенту
+        // &buff[0] - данные для отправки
+        // bsize - размер отправляемых данных
         // 0 - флаги
-        // (sockaddr*)&Daddr - адрес получателя (сервер)
-        // sizeof(Daddr) - размер структуры адреса
-        sendto(my_sock, (char*)&SS[0], SS.size(), 0, (sockaddr*)&Daddr, sizeof(Daddr));
-        
-        // ==================== ПРИЕМ ОТВЕТА ОТ СЕРВЕРА ====================
-        sockaddr_in SRaddr;        // структура для адреса отправителя (сервера)
-        int SRaddr_size = sizeof(SRaddr);  // размер структуры
-        
-        // recvfrom() - ждет и принимает ответ от сервера
-        // это блокирующий вызов - программа остановится здесь, пока не придет ответ
-        int n = recvfrom(my_sock, buff, sizeof(buff), 0, (sockaddr*)&SRaddr, &SRaddr_size);
-        
-        if (n == SOCKET_ERROR) {  // если ошибка приема
-            cout << "RECVFROM() ERROR:" << WSAGetLastError() << "\n";
-            closesocket(my_sock);  // закрываем сокет
-            WSACleanup();          // освобождаем Winsock
-            return -1;             // выходим с ошибкой
-        }
-        
-        buff[n] = '\0';            // добавляем завершающий нуль в конец полученных данных
-        cout << "S=>C:" << buff << "\n";  // выводим ответ сервера (эхо) на экран
+        // (sockaddr *)&Caddr - адрес получателя (клиента)
+        // sizeof(Caddr) - размер структуры адреса
+        sendto(Lsock, &buff[0], bsize, 0, (sockaddr*)&Caddr, sizeof(Caddr));
     }
-    
-    // ==================== ШАГ 5: ЗАВЕРШЕНИЕ РАБОТЫ ====================
-    closesocket(my_sock);  // закрываем сокет (освобождаем системный ресурс)
-    WSACleanup();          // освобождаем Winsock (выгружаем библиотеку)
-    return 0;              // успешное завершение программы
+
+    return 0;                // завершаем программу (никогда не выполняется из-за while(1))
 }
