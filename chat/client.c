@@ -10,16 +10,34 @@ using namespace std;
 #pragma comment(lib, "Ws2_32.lib")
 
 #define PORT 666
-
 #define SERVERADDR "127.0.0.1"
 
+// Глобальная переменная для управления состоянием ника
+bool nicknameAccepted = false;
+string currentNick;
+
+// Функция потока для приёма сообщений от сервера
 DWORD WINAPI ReceiveMessages(LPVOID sock) {
     SOCKET s = *(SOCKET*)sock;
     char buff[1024];
     int len;
+
     while ((len = recv(s, buff, 1024, 0)) > 0) {
         buff[len] = '\0';
-        cout << buff;
+        string msg(buff);
+
+        if (msg == "NICKNAME_TAKEN\n") {
+            cout << "\n[ERROR] Nickname '" << currentNick << "' is already taken!\n";
+            cout << "Please enter a different nickname: ";
+            nicknameAccepted = false;
+        }
+        else if (msg == "NICKNAME_ACCEPTED\n") {
+            cout << "Nickname '" << currentNick << "' accepted! Welcome to chat!\n";
+            nicknameAccepted = true;
+        }
+        else {
+            cout << msg;
+        }
     }
     return 0;
 }
@@ -55,14 +73,21 @@ int main() {
     }
 
     cout << "Connected to server!\n";
-    cout << "Enter your nickname: ";
-    string nick;
-    getline(cin, nick);
 
-    send(my_sock, nick.c_str(), nick.size(), 0);
-
+    // Запускаем поток для приёма сообщений
     DWORD thID;
     CreateThread(NULL, 0, ReceiveMessages, &my_sock, 0, &thID);
+
+    // Цикл ввода ника (пока не примут)
+    nicknameAccepted = false;
+    while (!nicknameAccepted) {
+        cout << "Enter your nickname: ";
+        getline(cin, currentNick);
+        send(my_sock, currentNick.c_str(), currentNick.size(), 0);
+
+        // Небольшая задержка, чтобы сервер успел ответить
+        Sleep(100);
+    }
 
     cout << "\n===== CHAT =====" << endl;
     cout << "  Public message: just type text" << endl;
