@@ -50,7 +50,6 @@ int main() {
     sockaddr_in local_addr{};
     local_addr.sin_family = AF_INET;
     local_addr.sin_port = htons(PORT);
-
     local_addr.sin_addr.s_addr = inet_addr(SERVERADDR);
 
     if (bind(mysocket, (sockaddr*)&local_addr, sizeof(local_addr))) {
@@ -90,28 +89,51 @@ int main() {
     return 0;
 }
 
+// ФУНКЦИЯ ПОТОКА ДЛЯ КАЖДОГО КЛИЕНТА (только одно определение!)
 DWORD WINAPI ConToClient(LPVOID client_socket) {
     SOCKET my_sock = *(SOCKET*)client_socket;
     delete (SOCKET*)client_socket;
 
     char buff[1024];
     int len;
+    string nick;
+    bool nickAccepted = false;
 
-    len = recv(my_sock, buff, 1024, 0);
-    if (len <= 0) {
-        closesocket(my_sock);
-        return 0;
+    // ===== ЦИКЛ ПРОВЕРКИ НИКА (сервер НЕ закрывает сокет при ошибке) =====
+    while (!nickAccepted) {
+        len = recv(my_sock, buff, 1024, 0);
+        if (len <= 0) {
+            closesocket(my_sock);
+            return 0;
+        }
+        buff[len] = '\0';
+        nick = buff;
+
+        EnterCriticalSection(&cs);
+
+        if (clients.find(nick) != clients.end()) {
+            // Ник занят
+            string errorMsg = "NICKNAME_TAKEN\n";
+            send(my_sock, errorMsg.c_str(), errorMsg.size(), 0);
+            LeaveCriticalSection(&cs);
+            // НЕ закрываем сокет — ждём новый ник
+        }
+        else {
+            // Ник свободен
+            clients[nick] = my_sock;
+            nclients++;
+            cout << "+ " << nick << " connected\n";
+            PRINTNUSERS
+
+                string acceptMsg = "NICKNAME_ACCEPTED\n";
+            send(my_sock, acceptMsg.c_str(), acceptMsg.size(), 0);
+
+            LeaveCriticalSection(&cs);
+            nickAccepted = true;
+        }
     }
-    buff[len] = '\0';
-    string nick(buff);
 
-    EnterCriticalSection(&cs);
-    clients[nick] = my_sock;
-    nclients++;
-    cout << "+ " << nick << " connected\n";
-    PRINTNUSERS
-        LeaveCriticalSection(&cs);
-
+    // Оповещаем всех о новом клиенте
     string welcomeMsg = "=== " + nick + " joined the chat ===\n";
     EnterCriticalSection(&cs);
     for (auto& p : clients) {
@@ -121,6 +143,7 @@ DWORD WINAPI ConToClient(LPVOID client_socket) {
     }
     LeaveCriticalSection(&cs);
 
+    // Основной цикл приёма сообщений
     while ((len = recv(my_sock, buff, 1024, 0)) > 0) {
         buff[len] = '\0';
         string msg(buff);
@@ -157,6 +180,7 @@ DWORD WINAPI ConToClient(LPVOID client_socket) {
         }
     }
 
+    // Клиент отключился
     EnterCriticalSection(&cs);
     clients.erase(nick);
     nclients--;
