@@ -1,87 +1,77 @@
+// www-client.cpp - МОДИФИЦИРОВАННАЯ ВЕРСИЯ
+#define _CRT_SECURE_NO_WARNINGS
 #include <string>
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #include <winsock2.h>
 #include <iostream>
-#pragma comment(lib, "Ws2_32.lib")
+#pragma comment (lib,"Ws2_32.lib")
 #pragma warning(disable: 4996)
 
 using namespace std;
 
-#define request "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-#define max_packet_size 65535
-
 int main() {
+    setlocale(LC_ALL, "ru");
     WSADATA ws;
     SOCKET s;
     sockaddr_in adr;
     HOSTENT* hn;
-    char buff[max_packet_size];
+    char buff[65535];
 
-    // Инициализация Winsock
-    if (WSAStartup(0x0202, &ws) != 0) {
-        cerr << "WSAStartup failed" << endl;
+    // init
+    if (WSAStartup(0x0202, &ws) != 0) { return -1; }
+
+    // создаём сокет
+    if (INVALID_SOCKET == (s = socket(AF_INET, SOCK_STREAM, 0))) {
         return -1;
     }
 
-    // Создаём сокет
-    s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s == INVALID_SOCKET) {
-        cerr << "Socket creation failed: " << WSAGetLastError() << endl;
-        WSACleanup();
+    // получаем адрес
+    if (NULL == (hn = gethostbyname("localhost"))) {
         return -1;
     }
 
-    // Получаем адрес
-    hn = gethostbyname("localhost");
-    if (hn == NULL) {
-        cerr << "gethostbyname failed: " << WSAGetLastError() << endl;
-        closesocket(s);
-        WSACleanup();
-        return -1;
-    }
-
-    // Заполняем структуру adr
+    // заполняем структуру адреса
     adr.sin_family = AF_INET;
+    ((unsigned long*)&adr.sin_addr)[0] = ((unsigned long**)hn->h_addr_list)[0][0];
     adr.sin_port = htons(8000);
-    memcpy(&adr.sin_addr, hn->h_addr_list[0], hn->h_length);
 
-    // Устанавливаем соединение
-    if (connect(s, (sockaddr*)&adr, sizeof(adr)) == SOCKET_ERROR) {
-        cerr << "Connect failed: " << WSAGetLastError() << endl;
-        closesocket(s);
-        WSACleanup();
+    // устанавливаем соединение
+    if (SOCKET_ERROR == connect(s, (sockaddr*)&adr, sizeof(adr))) {
         return -1;
     }
 
-    // Посылаем запрос
-    if (send(s, request, strlen(request), 0) == SOCKET_ERROR) {
-        cerr << "Send failed: " << WSAGetLastError() << endl;
-        closesocket(s);
-        WSACleanup();
+    // ===== НОВЫЙ КОД: СПРАШИВАЕМ, ЧТО ОТПРАВИТЬ =====
+    string userData;
+    cout << "Введите данные для сохранения на сервере: ";
+    getline(cin, userData);
+
+    // Формируем POST-запрос с данными
+    string request = "POST / HTTP/1.1\r\n";
+    request += "Host: localhost\r\n";
+    request += "Content-Length: " + to_string(userData.length()) + "\r\n";
+    request += "\r\n";
+    request += userData;
+    // ===== КОНЕЦ НОВОГО КОДА =====
+
+    // посылаем запрос серверу
+    if (SOCKET_ERROR == send(s, request.c_str(), request.length(), 0)) {
         return -1;
     }
 
-    // Получаем ответ
+    // ждём ответа
     int len = 0;
     do {
-        len = recv(s, buff, max_packet_size - 1, 0);
-        if (len == SOCKET_ERROR) {
-            cerr << "Recv failed: " << WSAGetLastError() << endl;
-            closesocket(s);
-            WSACleanup();
+        if (SOCKET_ERROR == (len = recv(s, (char*)&buff, 65535, 0))) {
             return -1;
         }
-        if (len > 0) {
-            buff[len] = '\0';
-            cout << buff;
-        }
-    } while (len > 0);
+        for (int i = 0; i < len; i++) cout << buff[i];
+    } while (len != 0);
 
-    // Закрываем соединение
-    closesocket(s);
-    WSACleanup();
+    // закрываем соединение
+    if (SOCKET_ERROR == closesocket(s)) {
+        return -1;
+    }
 
-    cout << "\n\nPress Enter to exit...";
     cin.get();
-    return 0;
+    return 1;
 }
